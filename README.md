@@ -1,4 +1,4 @@
-# Macroeconomic-Crude-Oil-Analysis-using-Machine-Learning
+# Macroeconomic Crude Oil Analysis using Machine-Learning
 
 The aim of this Research Project is to analyse macroeconomic data about Crude Oil and try to understand how each variable could impacts others in order
 to predict possible future price shock in the market. Data that we are going to use are public and provided from the U.S. Energy Information and 
