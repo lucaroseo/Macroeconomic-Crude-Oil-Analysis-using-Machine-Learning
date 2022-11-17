@@ -1,3 +1,6 @@
+## To read the final report download the zip file called "Crude oil Analysis Report"
+
+
 # Macroeconomic Crude Oil Analysis using Machine Learning
 
 The aim of this Research Project is to analyse macroeconomic data about Crude Oil and try to understand how each variable could impacts others in order
