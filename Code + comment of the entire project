@@ -1,0 +1,743 @@
+---
+title: 'Macroeconomic Crude Oil Analysis using Machine Learning  '
+author: Luca Roseo
+date: June 15, 2020
+output:
+    output: rmdformats::readthedown
+    toc_depth: true
+    toc: yes
+    toc_float: yes
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+# Overview
+
+The aim of this Research Project is to analyse macroeconomic data about Crude Oil and try to understand how each variable could impacts others in order to predict possible future price shock in the market.
+Data that we are going to use are public and provided from the U.S.
+Energy Information and Administration; in particular we will explore this variables: Export,Import,Refinery Capacity,Price, Stocks,Product Supplied and Production.
+Major premise: these data are not comprehensive of all of the informations that affect crude oil price and his variation during the time but we could assume that they are correlated with the trend of this commodity; beside that we are going to focus only on a limited period of time of these variables (1992-2020), so models that we will obtain could be imprecise due to lack of some information (or variables) that are potentially correlated with the problem.
+Our studies will be focused on exploratory data analysis and the application of some supervised machine learning models like Multiple Linear Regression and Logistic Regression.
+Goal of this project is to discover if there could be a statistical advantage in predicting price change in order to take financial decisions.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,echo=FALSE}
+#Creating dataset
+Macro_Crude_Oil_Data <- read.csv("~/Desktop/Uni/dati macro crudeoil/Macro_Crude_Oil_Data.csv")
+df<-Macro_Crude_Oil_Data 
+```
+
+```{r,echo=FALSE }
+df<-df[,-1]
+
+#Creating time values
+data<-as.Date(df$data)
+
+#Transform valus in numeric form
+Export<-df$Export
+Import<-df$Import
+Refinery<-df$Refinery
+Product_Supplied<-df$Product_Supplied
+Stock<-df$Stock
+Production<-df$Production
+Price<-df$Price
+Export<-as.numeric(Export)
+Import<-as.numeric(Import)
+Refinery<-as.numeric(Refinery)
+Product_Supplied<-as.numeric(Product_Supplied)
+Stock<-as.numeric(Stock)
+Production<-as.numeric(Production)
+Price<-as.numeric(Price)
+```
+
+# Dataset
+
+The dataset has 1482 rows (observations) and 9 columns (variables, first one is the date).
+It is composed by weekly data in the period 1992-2020.
+
+Variables:
+
+-Export: Amount of crude oil barrels exported every week
+
+-Import: Amount of crude oil barrels imported every week
+
+-Refinery: Amount of crude oil barrels refined every week
+
+-Product Supplied: Amount of crude oil barrels supplied every week
+
+-Stock: Amount of crude oil barrels stocked every week
+
+-Production: Amount of crude oil barrels producted every week
+
+-Price: commodity price
+
+Let's look how it is:
+
+```{r,echo=FALSE}
+head(df)
+```
+
+# Exploratory Data Analysis
+
+The first thing that we can do is to look at raw data in order to have a basic idea how they are and how we can analyse them.
+Let's plot time series.
+
+```{r ,echo=FALSE,warning=FALSE,message=FALSE}
+#Importing libraries
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+library(corrplot)
+```
+
+## Time series plot
+
+```{r ,echo=FALSE}
+dp1<-data.frame(data,Import)
+z<-ggplot(dp1,aes(x=data,y=Import,group=1)) +
+  geom_line() +
+  ggtitle("Import")
+
+
+dp2<-data.frame(data,Export)
+a<-ggplot(dp2,aes(x=data,y=Export,group = 1)) +
+  geom_line()+
+  ggtitle("Export")
+
+dp3<-data.frame(data,Refinery)
+b<-ggplot(dp3,aes(x=data,y=Refinery,group = 1)) +
+  geom_line()+
+  ggtitle("Refinery")
+
+dp4<-data.frame(data,Product_Supplied)
+c<-ggplot(dp4,aes(x=data,y=Product_Supplied,group = 1)) +
+  geom_line()+
+  ggtitle("Product Supplied")
+
+dp5<-data.frame(data,Stock)
+d<-ggplot(dp5,aes(x=data,y=Stock,group = 1)) +
+  geom_line()+
+  ggtitle("Stock")
+
+
+dp6<-data.frame(data,Production)
+e<-ggplot(dp6,aes(x=data,y=Production,group = 1)) +
+  geom_line()+
+  ggtitle("Production")
+
+ggarrange(z,a,ncol=2,nrow=1)
+
+ggarrange(b,c,ncol=2,nrow=1)
+
+ggarrange(d,e,ncol=2,nrow=1)
+```
+
+```{r ,echo=FALSE,warning=FALSE,message=FALSE}
+
+dp7<-data.frame(data,Price)
+f<-ggplot(dp7,aes(x= data,y=Price,group = 1)) +
+  geom_line()+
+  ggtitle("Price")
+ggarrange(f,ncol=2,nrow=1)
+```
+
+Now we can compute basic statistics and correlation plot.
+
+```{r ,warning=FALSE,message=FALSE}
+summary(df)
+```
+
+## Correlation plot
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+corrplot(cor(df[,2:8]))
+```
+
+## Correlation values
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+cor(df[,2:8])
+```
+
+As we can observe Export and Production is negative correlated with Import, while Price seems to be uncorrelated with the amount of crude oil producted; all of the others variables seems to have strong correlation between each other.
+If we want to look deeper at the distribution of our data we can compute boxplots.
+
+## Boxplot
+
+```{r, echo=FALSE}
+par(mfrow=c(2,3))
+boxplot(Import,col = "red",main="Import")
+boxplot(Export,col="yellow",main="Export")
+boxplot(Refinery,col = "orange",main="Refinery")
+boxplot(Product_Supplied,col = "green",main="Product Supplied")
+boxplot(Stock,col = "violet",main="Stock")
+boxplot(Production,col ="grey",main="Production")
+```
+
+As we can notice just from the previous plot, we are working with time series data; this means we need to adjust our analysies to these specific kind of data.
+The first thing we can do is to test the series for stationarity or non-stationarity in order to see if we can compute multiple linear regression with the original values or with the "log-differeces".
+
+# Test for non-stationarity
+
+We are going to use the Augmented Dickey-Fuller Test to discover the nature of these series.
+
+```{r ,echo=FALSE,warning=FALSE,message=FALSE}
+library(tseries)
+```
+
+## ADF test
+
+```{r ,echo=FALSE,warning=FALSE,message=FALSE}
+adf.test(df$Export)
+adf.test(df$Import)
+adf.test(df$Refinery)
+adf.test(df$Product_Supplied)
+adf.test(df$Stock)
+adf.test(df$Production)
+adf.test(df$Price)
+
+```
+
+The null hypothesis of non-stationarity is accepted for each variable except for "Refinery" so this means that it's not possible to regress "Price" on the other variables with the original values.
+One way to solve this problem is to trasform our data taking the first difference for each time series, in this case, the log-first-difference in order to obtain the percentage change.
+Due to the fact that we are using weekly data, the new dataset will show how each variable changes week by week in percentage (for instance "Production"=-0,11 means that the crude oil production decreases of 11% from the previous week).
+Let's look the new data.
+
+```{r ,echo=FALSE,warning=FALSE,message=FALSE}
+d_l_Export<-diff(log(df$Export))
+d_l_Import<-diff(log(df$Import))
+d_l_Refinery<-diff(log(df$Refinery))
+d_l_Prod_Suppl<-diff(log(df$Product_Supplied))
+d_l_Stock<-diff(log(df$Stock))
+d_l_Prod<-diff(log(df$Production))
+d_l_Price<-diff(log(df$Price))
+
+d_l_date<-df$data[-1]
+d_l_df<-data.frame(d_l_date,d_l_Export,d_l_Import,d_l_Refinery,d_l_Prod_Suppl,
+                   d_l_Stock,d_l_Prod,d_l_Price)
+```
+
+# Final dataset
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+head(d_l_df)
+```
+
+Finally we can test again for non-stationarity.
+
+## ADF test on new data
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+adf.test(d_l_df$d_l_Export)
+adf.test(d_l_df$d_l_Import)
+adf.test(d_l_df$d_l_Refinery)
+adf.test(d_l_df$d_l_Prod_Suppl)
+adf.test(d_l_df$d_l_Stock)
+adf.test(d_l_df$d_l_Prod)
+adf.test(d_l_df$d_l_Price)
+```
+
+The null hypothethesis of non-stationarity is refused for each variable, this means that each one is stationary and we can use them in regression model in order to continue our analysis.
+
+# Exploratory data analysis on new data
+
+At this point we can plot the new data to see how they are.
+
+## Plot
+
+```{r ,echo=FALSE,warning=FALSE,message=FALSE}
+par(mfrow=c(2,2))
+plot(d_l_df$d_l_Export , type = "l",col="red",ylab = "Change % Export",xlab = "Week")
+plot(d_l_df$d_l_Import , type = "l",col="red",ylab = " Change % Import",xlab = "Week")
+plot(d_l_df$d_l_Refinery , type = "l",col="red",ylab = "Change % Refinery",xlab = "Week")
+plot(d_l_df$d_l_Prod_Suppl , type = "l",col="red",ylab = "Change % Producton Supplied", xlab = "Week")
+plot(d_l_df$d_l_Stock , type = "l",col="red",xlab = "Week",ylab = "Change % Stock")
+plot(d_l_df$d_l_Prod , type = "l",col="red",xlab = "Week",ylab = "Change % Production")
+plot(d_l_df$d_l_Price , type = "l",col="red",xlab = "Week",ylab = "Price Return")
+```
+
+We can compute again basic statistics, correlation and boxplots.
+
+## Correlation plot
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+summary(d_l_df[,2:8])
+dl_df<-d_l_df[,-1]
+corrplot(cor(dl_df))
+```
+
+As we can see the correlation between each variable is very low due to data transformation and this leads to the hypothesis that we will not suffer of multicollinearity between the regressors; we will use later the Variance Inflation Factor to test if there is this problem in our dataset.
+
+## Boxplot
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+par(mfrow=c(2,3))
+boxplot(d_l_df$d_l_Export , col="red",xlab="Export")
+boxplot(d_l_df$d_l_Import , col="green",xlab="Import")
+boxplot(d_l_df$d_l_Refinery , col="violet",xlab="Refinery")
+boxplot(d_l_df$d_l_Prod_Suppl , col="yellow",xlab="Prodution Supplied")
+boxplot(d_l_df$d_l_Stock , col="orange",xlab="Stock")
+boxplot(d_l_df$d_l_Prod , col="pink",xlab="Production")
+#boxplot(d_l_df$d_l_Price , col="light blue",xlab="Price")
+```
+
+# Kernel Density Estimator
+
+As we can see the distribution of percertage change of each variable is quite different from each other, so we can deduce that there are non symmetrical distributions and possible ouliers in our data.
+Besides this basic data visualization we can go deeper with our analysis using a Kernel Density function to have a better idea of how data are distributed.
+
+## Kernel density plot
+
+```{r ,echo=FALSE,warning=FALSE,message=FALSE}
+kd_Export<-density(d_l_df$d_l_Export)
+kd_Import<-density(d_l_df$d_l_Import)
+kd_Refinery<-density(d_l_df$d_l_Refinery)
+kd_Prod_Suppl<-density(d_l_df$d_l_Prod_Suppl)
+kd_Stock<-density(d_l_df$d_l_Stock)
+kd_Prod<-density(d_l_df$d_l_Prod)
+kd_Price<-density(d_l_df$d_l_Price)
+
+par(mfrow=c(1,2))
+plot(kd_Export,main = "Kernel Density Export")
+polygon(kd_Export, col='steelblue', border='black') #per aggiungere colore
+plot(kd_Import,main = "Kernel Density Import")
+polygon(kd_Import, col='green', border='black')
+plot(kd_Refinery,main = "Kernel Density Refinery")
+polygon(kd_Refinery, col='red', border='black')
+plot(kd_Prod_Suppl,main = "Kernel Density Product Supplied")
+polygon(kd_Prod_Suppl, col='yellow', border='black')
+plot(kd_Stock,main = "Kernel Density Stock")
+polygon(kd_Stock, col='orange', border='black')
+plot(kd_Prod,main = "Kernel Density Production")
+polygon(kd_Prod, col='pink', border='black')
+par(mfrow=c(1,1))
+plot(kd_Price,main = "Kernel Density Price Return")
+polygon(kd_Price, col='violet', border='black')
+```
+
+## Normality Test
+
+Once we have obtained the the previous distributions we can test them for normality using Jarque-Bera test.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+jarque.bera.test(kd_Export$x)
+jarque.bera.test(kd_Import$x)
+jarque.bera.test(kd_Prod$x)
+jarque.bera.test(kd_Prod_Suppl$x)
+jarque.bera.test(kd_Refinery$x)
+jarque.bera.test(kd_Stock$x)
+jarque.bera.test(kd_Price$x)
+```
+
+For each test we refuse the null hypothesis of normality distribution for a significance level of 0.05.
+
+# Multiple Linear Regression
+
+Once we have obtained our new dataset with the finale variables we can start applying the fist machine learning model: Multiple Regression.
+In order to do that we have to create a "training" and a "test" dataset.
+The partition is 70% for the training data and 30% for the test data.
+
+## Training data dimension
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+#training data dimension
+dl.df.train<-dl_df[1:1000,]
+dim(dl.df.train)
+```
+
+## Test data dimension
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+#test data dimension
+dl.df.test<-dl_df[1001:1481,]
+dim(dl.df.test)
+```
+
+## Results model
+
+Let's apply the model on the training data.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+train.model<-lm(dl.df.train$d_l_Price ~ . , data =dl.df.train)
+summary(train.model)
+```
+
+Export, Import and Refinery has positive coefficients so this means that a change in those variables lead to an increase of price return while Product Supplied, Stock and Production (with negative coefficients) brings to a decrease in price return.
+This dynamic can be explained from a macroeconomical poit of view (in our analysis we will not cover this part).
+As we can see every coefficient is statistically significant at the 0.1 level except for Export and Import that have a p-value greater than 10%.
+Statistically this two coefficients are not relevant for the model if we consider this approach but if we look at the p-values of these regressors we can notice the they are still relatively small and it's very likely that they have influence on the dependent variable.
+In addition to this reflection we can verify with the F-test the goodness of fit of this model and due to the fact that p-value is smaller than 0.001 we reject the null hypothesis and we accept the assumption of relevance of these specific variables.
+
+## Diagnostic plot
+
+Another important analysis that we have to do is to look at the residual distribution with the aim of verify the assumption of normal distribution.
+To do that we use diagnostic plot.
+
+```{r,echo=FALSE}
+par(mfrow=c(2,2))
+plot(train.model, which = 1:4)
+```
+
+From the previous plot we can verify that the relation between residual and fitted values is not totally linear and the same applies to theoretical quantiles and standardized residual.
+This leads to the conclusion than residuals are not normally distribuited.
+In order to be sure about this assumption we will use the Jarque-Bera test.
+
+## Normality test on residuals
+
+```{r ,warning=FALSE,message=FALSE}
+jarque.bera.test(train.model$residuals)
+```
+
+We reject the null hypothesis of normality distribuition at 0.01 level of significance.
+
+## VIF
+
+At this point we can test for multicollinearity using the Variance Inflation Factors.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+library(car)
+x=c("Export","Import","Refinery","Prod_S","Stock","Production")
+x=as.factor(x)
+vif=vif(train.model)
+vif=as.numeric(vif)
+plot(x,vif,type = "h", col="red", main="Variance Inflation Factors", ylab="VIF",xlab="Variables")
+```
+
+VIF for each regressor is always minor than 5 so we can exclude the possibility of multicollinearity;
+
+## Model accuracy
+
+One way to test the accuracy of the model is to use it to make prediction; at first we will apply it to the training data (just remember that this procedure is adopted to give us a basic idea of the model performs on data, final valuation will be made using test data).
+Mean Square Error will be used to calculate model performance(also RMSE).
+
+## Mean Square Error
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+mse=mean((dl.df.train$d_l_Price - train.model$fitted.values)^2)
+mse
+```
+
+## Root Mean Square Error
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+rmse=mse^(1/2)
+rmse
+```
+
+Obviously we could obtain better results in term of goodness of fit using R\^2 as a comparison parameter with other linear models with different regressors; later we will try to optimize the accuracy of the model with feature selection.
+
+## Prediction
+
+Now that we have the model we can apply it to the test data in order to see how well it performs.
+As before we evaluate the model using MSE.
+
+## MSE
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+prediction<-predict(train.model,newdata = dl.df.test)
+mse_test=mean((dl.df.test$d_l_Price-prediction)^2)
+mse_test
+```
+
+## RMSE
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+rmse_test=(mse_test)^(1/2)
+rmse_test
+```
+
+As we could expect MSE(and obviously RMSE) are much higher in the test data, so this means that our model in a real world application would underperform the accuracy previously calculated.
+Let's plot them.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+mse_values=c(mse,mse_test)
+x_mse=c("MSE Training", "MSE Test")
+x_mse=as.factor(x_mse)
+plot.default(x_mse,round(mse_values,3),main="Mean Square Error for Training and Test data",col="red",axes = FALSE, pch=17,cex=2,xlab = "Dataset",ylab = "MSE")
+axis(side = 1, at = x_mse, labels =x_mse )
+axis(side=2, at=mse_values, labels =mse_values )
+```
+
+Before move on, let's visualize a plot of predicted values.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+plot(prediction,type = "p",col="red",main = "Price Return Predicition")
+lines(dl.df.test$d_l_Price,type = "l",col="blue")
+legend("topright",legend = c("original_y","predicted_y"),fill = c("blue","red"))
+```
+
+# Features selection
+
+Features selection is the process of reducing the number of input variables when developing a predictive model.
+It is desirable to reduce the number of input variables to both reduce the computational cost of modeling and, in some cases, to improve the performance of the model.
+
+# Best Subsets Regression
+
+As told before, one way to improve model accuracy is features selection; there are multiple ways and procedures to do it but the one that we are going to use it is called "Best Subsets Regression".
+
+## Best six combination models
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+library(leaps)
+models <- regsubsets(dl.df.train$d_l_Price ~ . , data =dl.df.train, nvmax = 6)
+res.sum<-summary(models)
+res.sum
+
+```
+
+## Model with minimun adjusted R\^2
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+which.min(res.sum$adjr2)
+
+```
+
+## Model with minimun BIC
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+which.min(res.sum$bic)
+
+```
+
+Between all of the possible combination of independent variables the model with the lowest adjusted R\^2 and BIC is the one that uses only "Stock" as regressor.
+From an economic point of view it is very unlikely that only one feature can explain price return change but matematically it is the best.
+
+## New Model
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+model_bsr<-lm(dl.df.train$d_l_Price ~ dl.df.train$d_l_Stock , data =dl.df.train)
+summary(model_bsr)
+```
+
+## MSE with the new model
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+pred_bsr<-predict(model_bsr,newdata = dl.df.test)
+mse_test_bsr=mean((dl.df.test$d_l_Price-pred_bsr)^2)
+mse_test_bsr
+```
+
+## Comparison between MSE on test data
+
+Althought the new MSE is lower than the one obtained with the full model, there isn't a big difference in their values so we didn't get a real improvement in the accuracy.
+Let's plot their values.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+s<-c(round(mse_test,3),round(mse_test_bsr,3))
+model_names<-c("Full model","Best subsets regression")
+model_names<-as.factor(model_names)
+plot.default(model_names,s,main="Mean Square Error on Test data",col="red",axes = FALSE, pch=17,cex=2,xlab = "Models",ylab = "MSE",type = "b")
+axis(side=1, at=model_names, labels =model_names )
+axis(side = 2, at = s, labels =s )
+```
+
+# Lasso Regression
+
+Best subsets regression seems to be useless to improve accuracy so we could decide to use another approach : Lasso regression.
+This Regularization technique assigns a penalty to the coefficients that are less related to the dependent variable.
+In order to implement this model we will perform a 10-fold cross-validation to find optimal value for lambda (unknown parameter for this regression model).
+We will choose the value that minimizes the mean squared error.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+library(glmnet)
+
+df_train_lasso<-dl.df.train[,-7]
+df_train_lasso<-as.matrix(df_train_lasso)
+df_train_lasso_price<-dl.df.train[7]
+df_train_lasso_price<-as.matrix(df_train_lasso_price)
+
+#perform k-fold cross-validation to find optimal lambda value
+cv_model<-cv.glmnet(df_train_lasso,df_train_lasso_price,alpha=1)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+```
+
+## Optimal Lambda
+
+Finally we can plot the relation between Lambda value and the corresponding mean-squared error; above the graph there is the relative number of regressors for each parameter's value.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+#produce plot of test MSE by lambda value
+plot(cv_model) 
+```
+
+## Optimal value for Lambda
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+print(paste("Best Lambda:",best_lambda))
+```
+
+Now we run the model using the new parameter; let's see the new coefficients.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+best_model <- glmnet(df_train_lasso,df_train_lasso_price, alpha = 1, lambda = best_lambda)
+coef(best_model)
+best_model$dev.ratio
+```
+
+As we can notice the coefficients are almost identical to the one obtained with OLS (sign and values); we expect similar predictions to the previous model.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+#test data
+df_test_lasso<-as.matrix(dl.df.test[,-7])
+df_test_lasso_price<-as.matrix(dl.df.test[7])
+
+```
+
+## Mean squared error with Lasso regression
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+pred_lasso<-predict(best_model, s = best_lambda, newx = df_test_lasso)
+mse_lasso<-mean((df_test_lasso_price-pred_lasso)^2)
+mse_lasso<-round(mse_lasso,3)
+print(paste("Lasso MSE:",mse_lasso))
+```
+
+As we had anticipated before, the results in accuracy are identical to the one obtained with the firs model(OLS).
+
+Until now, we have tried to predict the weekly change (in percentage) but with poor results; the mean squared erros is always too high to be used in a real-world implementation of these models.
+Just remember that MSE=0.014 consists in a root mean squared error of 0.12 so in order to take financial decisions the risk level due to inaccuracy could be dangerous for the potential investors.
+Are there any possible solutions?
+An alternative idea is to transform this regression problem to a classification problem.
+The aim of this approach is to classify as "1" weeks where the price change is positive and as "0" where it's negative.
+From quantitative predictions now we will have binary response.
+
+# Logistic Regression
+
+As explained before, we have to convert to binary values the "Price Change" the column of our dataset in order to apply this classification model.
+If the value is positive it will be converted to "1", if it's negative to "0".
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+df.log.train<-dl.df.train
+df.log.test<-dl.df.test
+df.log.train$d_l_Price[df.log.train$d_l_Price>= "0"]<-"1"
+
+df.log.train$d_l_Price[df.log.train$d_l_Price< "0"]<-"0"
+
+
+df.log.test$d_l_Price<-ifelse(df.log.test$d_l_Price>=0,1,0)
+#df.log.test$d_l_Price[df.log.test$d_l_Price < "0"] <-"0"
+
+#df.log.test$d_l_Price[df.log.test$d_l_Price >= "0"] <-"1"
+
+df.log.train$d_l_Price<-as.factor(df.log.train$d_l_Price)
+
+df.log.test$d_l_Price<-as.factor(df.log.test$d_l_Price)
+
+```
+
+## Price return converted to binary variable
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+head(df.log.train)
+```
+
+## Contingency table for training data
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+table(df.log.train$d_l_Price)
+```
+
+There are 463 weeks where the price return was negative and 537 where it was positive.
+
+## Contingency table for test data
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+table(df.log.test$d_l_Price)
+```
+
+There are 237 weeks where the price return was negative and 244 where it was positive.
+
+##Results model
+
+Let's run the model.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+model.log <- glm(df.log.train$d_l_Price ~.,family=binomial(link='logit'),data=df.log.train)
+summary(model.log)
+```
+
+Variable "Stock" results statistically significant at 0.01 level while "Production" and "Product Supplied" althought has an higher p-value (but lower than 0.2) we can still consider them significant for the model.
+For all of the other variables we accept the null hypothesis of coefficients equal to zero.
+Negative coefficients for "Import","Product supplied","Stock" and "Production" mean that an increment in those variables decrease the log odds.
+
+## ANOVA
+
+At this point using analysis of variance we can visualize the deviance table.
+The difference between the null deviance and the residual deviance shows how our model is doing against the null model (a model with only the intercept).
+Analyzing the table we can see the drop in deviance when adding each variable one at a time.
+As expected "Stock" has the major impact in decreasing residual deviance (and it has the lowest p-value)
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+anova(model.log, test="Chisq")
+```
+
+## McFadden Index
+
+While no exact equivalent to the R2 of linear regression exists, the McFadden R2 index can be used to assess the model fit.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+library(pscl)
+pR2(model.log)
+```
+
+In our case the model didn't fit quite well the data as we can notice by the low index value(below 0.2)
+
+## Prediction
+
+Finally we fit the model on the test data; classification rule that we will adopt consists in assigning all predictions with value below 0.5 to class "0" and all the predictions with value above 0.5 to class "1".
+Now we can calculate the misclassification error in order to see the accuracy.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+pred.log.reg<-predict(model.log,newdata=df.log.test)
+pred.log.reg<- ifelse(pred.log.reg > 0.5,1,0)
+misClasificError <-mean(pred.log.reg != df.log.test$d_l_Price) 
+print(paste('Accuracy',1-round(misClasificError,2)))
+```
+
+Unfortunately, model performance is not satisfying for a possible financial application; having 51% chance of righ prediction means that you don't have a real statistical advantage in order to take investment decision.However, keep in mind that this result is somewhat dependent on the manual split of the data that I made earlier, therefore if you wish for a more precise score, you would be better off running some kind of cross validation such as k-fold cross validation.
+
+## ROC Curve
+
+As a last step, we are going to plot the ROC curve and calculate the AUC (area under the curve) which are typical performance measurements for a binary classifier.
+The ROC is a curve generated by plotting the true positive rate (TPR) against the false positive rate (FPR) at various threshold settings while the AUC is the area under the ROC curve.
+As a rule of thumb, a model with good predictive ability should have an AUC closer to 1 (1 is ideal) than to 0.5.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+library(ROCR)
+p <- predict(model.log, newdata=df.log.test, type="response")
+pr <- prediction(p, df.log.test$d_l_Price)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf,main="ROC curve",col="red")
+```
+
+## AUC
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+
+# Final considerations
+
+After all of these analysis, we have established that linear regression and logistic regression don't fit this kind of data too well; the problem could't be in the selection model but in choise of the independent variables.
+There are many factors that influences price return on financial markets and it's hard to create a model that can fit all of these informations.
+Another approach that could be adopted is to use Lasso (or Ridge) regression on original data without transforming theme due to the fact that they can solve the problem of multicollinearity.
+In future researches it will be interesting to apply other regression and classification models like KNN, Decision Trees and Naive Bayes.
+That being said, for a good model accuracy that most important thing it's data quality so a good option is to look for new kind of financial data potentially correlated with crude oil price return.
+As a final thought, i think that our results, although they aren't satisfactory, are still a good starting point for more deep statistical analysis; financial data requires strong knowledge of macroeconomics so having a strong understanding in economics and computational mathematics could help a lot for better results.
